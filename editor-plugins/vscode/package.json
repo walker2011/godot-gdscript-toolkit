@@ -55,11 +55,6 @@
             "type": "object",
             "title": "GDScript Formatter configuration",
             "properties": {
-                "gdscript_formatter.line_size": {
-                    "type": "number",
-                    "default": 100,
-                    "description": "The maximum size a given line can be before being wrapped."
-                }
             }
         }
     },

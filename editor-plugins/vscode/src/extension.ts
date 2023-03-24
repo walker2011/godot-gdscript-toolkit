@@ -8,13 +8,6 @@ const opn = require("opn");
 const SCRIPT_PATH = path.resolve(__dirname + "/../scripts/");
 const SCRIPT_NAME = "code_formatter.py";
 
-const PY_ARGS = [
-    "",
-    `${vscode.workspace
-        .getConfiguration("gdscript_formatter")
-        .get("line_size")}`,
-];
-
 export function activate(context: vscode.ExtensionContext) {
     let organize_command = vscode.commands.registerCommand(
         "gdscript-formatter.organize_script",
@@ -81,6 +74,7 @@ export async function run_formatter(
 ): Promise<string[] | undefined> {
     let options = PythonShell.defaultOptions;
     options.scriptPath = SCRIPT_PATH;
+    options.mode = "binary";
 
     const pythonConfig = vscode.workspace.getConfiguration("python");
     for (const pathSettingKey of ["defaultInterpreterPath", "pythonPath"]) {
@@ -91,26 +85,28 @@ export async function run_formatter(
         }
     }
 
-    let input = script;
-
-    options.args = PY_ARGS;
-    options.args[0] = input;
     try {
-        return await runPythonCommand(options);
+        return await runPythonCommand(script, options);
     } catch (error) {
         onPythonError(error as Error, uri);
     }
 }
 
-function runPythonCommand(options: Options) {
+function runPythonCommand(input: string, options: Options) {
     return new Promise<string[] | undefined>((resolve, reject) => {
-        PythonShell.run(SCRIPT_NAME, options, (err, results) => {
-            if (err) {
+        let pythonShell = new PythonShell(SCRIPT_NAME, options);
+
+		let output = "";
+		pythonShell.stdout.on("data", function (data) {
+			output += "" + data;
+		});
+		pythonShell.send(Buffer.from(input)).end(function (err) {
+			if (err) {
                 reject(err);
             } else {
-                resolve(results);
+                resolve(output.split("\n"));
             }
-        });
+		});
     });
 }
 
@@ -166,25 +162,25 @@ export function runPipInstall(uri?: vscode.Uri) {
 export function onPythonError(err: Error, uri: vscode.Uri) {
     console.log(err);
     var message = err.message;
-    if (
-        message.indexOf("ModuleNotFoundError") !== -1 &&
-        message.indexOf("gdtoolkit") !== -1
-    ) {
-        let promise = vscode.window.showErrorMessage(
-            "GDToolkit not installed.",
-            "Install using pip",
-            "Open GDToolkit repo"
-        );
-        promise.then((action) => {
-            if (action === "Open GDToolkit repo") {
-                opn("https://github.com/Scony/godot-gdscript-toolkit");
-            } else if (action === "Install using pip") {
-                runPipInstall(uri);
-            }
-        });
-    } else {
+    // if (
+    //     message.indexOf("ModuleNotFoundError") !== -1 &&
+    //     message.indexOf("gdtoolkit") !== -1
+    // ) {
+    //     let promise = vscode.window.showErrorMessage(
+    //         "GDToolkit not installed.",
+    //         "Install using pip",
+    //         "Open GDToolkit repo"
+    //     );
+    //     promise.then((action) => {
+    //         if (action === "Open GDToolkit repo") {
+    //             opn("https://github.com/Scony/godot-gdscript-toolkit");
+    //         } else if (action === "Install using pip") {
+    //             runPipInstall(uri);
+    //         }
+    //     });
+    // } else {
         vscode.window.showErrorMessage(message);
-    }
+    // }
 }
 
 async function provideEdits(document: vscode.TextDocument) {
@@ -193,9 +189,10 @@ async function provideEdits(document: vscode.TextDocument) {
     var end_character = document.lineAt(endLine).text.length;
     var range = new vscode.Range(0, 0, endLine, end_character);
 
-    const results = await run_formatter(document.getText(), document.uri);
+    var documentText = document.getText()
+    const results = await run_formatter(documentText, document.uri);
     if (results) {
-        edits.push(vscode.TextEdit.replace(range, results.join('\n')));
+        edits.push(vscode.TextEdit.replace(range, results.join("\n")));
     }
 
     return edits;
